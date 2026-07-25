@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WebGazer minimale iPad test</title>
+<style>
+html,body{margin:0;min-height:100%;font-family:Arial,sans-serif;background:#11151a;color:#fff}
+main{max-width:760px;margin:auto;padding:24px}
+button{font-size:18px;font-weight:700;padding:14px 18px;border:0;border-radius:12px;background:#ff8a22;color:#111}
+button:disabled{opacity:.5}
+#status{margin:18px 0;padding:14px;border-radius:10px;background:#20262e;white-space:pre-wrap}
+#dot{position:fixed;width:24px;height:24px;border:3px solid #fff;border-radius:50%;background:#ff5f66;transform:translate(-50%,-50%);pointer-events:none;display:none;z-index:999999}
+#log{min-height:180px;padding:12px;background:#080a0d;border-radius:10px;font:13px/1.45 monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/webgazer@3.5.3/dist/webgazer.js"></script>
+</head>
+<body>
+<main>
+<h1>WebGazer minimale test</h1>
+<p>Deze pagina bevat alleen WebGazer, één startknop en een gaze punt. Geen Texed, geen extra cameratest, geen trackerkeuze en geen dubbele initialisatie.</p>
+<button id="start">Start WebGazer</button>
+<div id="status">Nog niet gestart.</div>
+<div id="log"></div>
+</main>
+<div id="dot"></div>
+
+<script>
+(function(){
+"use strict";
+
+const startButton=document.getElementById("start");
+const statusBox=document.getElementById("status");
+const logBox=document.getElementById("log");
+const dot=document.getElementById("dot");
+
+function log(message){
+  const time=new Date().toLocaleTimeString();
+  logBox.textContent+="["+time+"] "+message+"\n";
+}
+
+window.addEventListener("error",function(event){
+  log("window.error: "+event.message+" @ "+event.filename+":"+event.lineno+":"+event.colno);
+});
+
+window.addEventListener("unhandledrejection",function(event){
+  const reason=event.reason;
+  log("unhandledrejection: "+(reason&&reason.stack?reason.stack:String(reason)));
+});
+
+startButton.addEventListener("click",async function(){
+  startButton.disabled=true;
+  statusBox.textContent="WebGazer wordt gestart...";
+  log("Startknop ingedrukt");
+  log("Secure context: "+window.isSecureContext);
+  log("WebGazer geladen: "+Boolean(window.webgazer));
+
+  if(!window.webgazer){
+    statusBox.textContent="WebGazer script is niet geladen.";
+    startButton.disabled=false;
+    return;
+  }
+
+  try{
+    window.webgazer.setGazeListener(function(data,elapsedTime){
+      if(!data){return;}
+      dot.style.display="block";
+      dot.style.left=data.x+"px";
+      dot.style.top=data.y+"px";
+      statusBox.textContent=
+        "WebGazer actief\n"+
+        "x: "+Math.round(data.x)+"  y: "+Math.round(data.y)+"\n"+
+        "tijd: "+Math.round(elapsedTime)+" ms";
+    });
+
+    await window.webgazer.begin();
+    statusBox.textContent="WebGazer is gestart. Kijk rond en klik enkele keren op verschillende plekken om te kalibreren.";
+    log("webgazer.begin() geslaagd");
+  }catch(error){
+    const name=error&&error.name?error.name:"Error";
+    const message=error&&error.message?error.message:String(error);
+    const stack=error&&error.stack?error.stack:"Geen stack beschikbaar";
+    statusBox.textContent=name+": "+message;
+    log(name+": "+message);
+    log(stack);
+    startButton.disabled=false;
+  }
+});
+})();
+</script>
+</body>
+</html>
