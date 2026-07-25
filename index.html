@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>Texed MediaPipe Eye Test v0.7 Mirror Fix</title>
+<style>
+:root{--bg:#101419;--panel:#1c232b;--text:#f4f6f8;--muted:#aab4bf;--accent:#ff8a22;--good:#61dc86;--bad:#ff6269}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+main{max-width:980px;margin:auto;padding:18px}
+h1{font-size:24px;margin:0 0 8px;color:var(--accent)}
+p{color:var(--muted);line-height:1.45}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+button{font-size:17px;font-weight:800;padding:13px 17px;border:0;border-radius:12px;background:var(--accent);color:#111}
+button.secondary{background:#2a333d;color:#fff}
+button:disabled{opacity:.5}
+#status{margin:14px 0;padding:13px;border-radius:12px;background:var(--panel);white-space:pre-wrap}
+#stage{position:relative;width:100%;max-width:760px;aspect-ratio:4/3;background:#050709;border-radius:16px;overflow:hidden}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+canvas{pointer-events:none}
+#overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.58);z-index:5;text-align:center;padding:30px}
+#overlayText{font-size:32px;font-weight:900;line-height:1.2}
+#metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.card{background:var(--panel);border-radius:12px;padding:12px}
+.label{font-size:13px;color:var(--muted);margin-bottom:5px}
+.value{font-size:21px;font-weight:800}
+.small{font-size:13px;color:var(--muted);margin-top:5px}
+.bar{height:12px;background:#0a0d11;border-radius:99px;overflow:hidden;margin-top:8px}
+.fill{height:100%;width:0;background:var(--accent)}
+#log{margin-top:14px;background:#07090c;border-radius:12px;padding:12px;min-height:150px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.45 monospace;color:#d2dae3}
+
+#gazeCursor{
+  position:fixed;
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  border:3px solid #fff;
+  background:var(--accent);
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:99998;
+  display:none;
+  box-shadow:0 0 22px rgba(255,138,34,.85);
+}
+#gazeCalibration{
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  background:rgba(7,9,12,.96);
+  display:none;
+}
+#gazeCalMessage{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(80vw,520px);
+  text-align:center;
+  font-size:22px;
+  font-weight:800;
+  pointer-events:none;
+}
+#gazePoint{
+  position:absolute;
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  border:5px solid white;
+  background:var(--bad);
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 30px rgba(255,98,105,.85);
+  display:none;
+}
+#gazeProgress{
+  position:absolute;
+  left:50%;
+  bottom:8%;
+  transform:translateX(-50%);
+  color:var(--muted);
+  font-size:16px;
+}
+
+@media(min-width:780px){#metrics{grid-template-columns:repeat(4,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<main>
+<h1>Texed MediaPipe Eye Test v0.7 Mirror Fix</h1>
+<p>Deze versie corrigeert de horizontale spiegeling van de iPad frontcamera. Na de vijfpuntskalibratie kun je de spiegeling bovendien direct aan of uit zetten om de juiste richting te controleren.</p>
+
+<div class="controls">
+  <button id="start">Start MediaPipe</button>
+  <button id="recalibrate" class="secondary" disabled>Kalibreer open ogen opnieuw</button>
+  <button id="gazeCalibrate" class="secondary" disabled>Start 5-punts kijkkalibratie</button>
+  <button id="mirrorX" class="secondary" disabled>Horizontaal gespiegeld: aan</button>
+</div>
+
+<div id="status">Model nog niet geladen.</div>
+
+<div id="stage">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="canvas"></canvas>
+  <div id="overlay"><div id="overlayText"></div></div>
+</div>
+
+<div id="metrics">
+  <div class="card">
+    <div class="label">Gezicht</div>
+    <div id="face" class="value">Nee</div>
+    <div id="confidence" class="small"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">Hoofdrichting</div>
+    <div id="headDirection" class="value">Midden</div>
+    <div id="headRaw" class="small">x 0.000 | y 0.000</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Irisrichting</div>
+    <div id="irisDirection" class="value">Midden</div>
+    <div id="irisRaw" class="small">x 0.500 | y 0.500</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Gecombineerde richting</div>
+    <div id="combinedDirection" class="value">Midden</div>
+    <div class="small">Hoofd krijgt voorlopig meer gewicht</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Knippering links</div>
+    <div id="blinkLeft" class="value">0%</div>
+    <div class="bar"><div id="blinkLeftBar" class="fill"></div></div>
+    <div id="earLeft" class="small">EAR 0.000</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Knippering rechts</div>
+    <div id="blinkRight" class="value">0%</div>
+    <div class="bar"><div id="blinkRightBar" class="fill"></div></div>
+    <div id="earRight" class="small">EAR 0.000</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Knipperstatus</div>
+    <div id="blinkState" class="value">Open</div>
+    <div id="blinkCount" class="small">Knippers: 0</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Open ogen basis</div>
+    <div id="baseline" class="value">Meten...</div>
+    <div id="baselineFrames" class="small">0 / 60 frames</div>
+  </div>
+</div>
+
+<div id="log"></div>
+</main>
+<div id="gazeCursor"></div>
+<div id="gazeCalibration">
+  <div id="gazeCalMessage">Kijk naar de stip en houd je hoofd normaal stil.</div>
+  <div id="gazePoint"></div>
+  <div id="gazeProgress"></div>
+</div>
+
+<script type="module">
+import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+const {FaceLandmarker,FilesetResolver,DrawingUtils}=vision;
+
+const $=id=>document.getElementById(id);
+const startButton=$("start");
+const recalibrateButton=$("recalibrate");
+const gazeCalibrateButton=$("gazeCalibrate");
+const mirrorXButton=$("mirrorX");
+const gazeCursor=$("gazeCursor");
+const gazeCalibration=$("gazeCalibration");
+const gazePoint=$("gazePoint");
+const gazeProgress=$("gazeProgress");
+const statusBox=$("status");
+const video=$("video");
+const canvas=$("canvas");
+const ctx=canvas.getContext("2d");
+const overlay=$("overlay");
+const overlayText=$("overlayText");
+const logBox=$("log");
+
+let landmarker=null;
+let running=false;
+let lastVideoTime=-1;
+let lastRun=0;
+let drawingUtils=null;
+
+let openSamplesLeft=[];
+let openSamplesRight=[];
+let openBaselineLeft=null;
+let openBaselineRight=null;
+let calibratingOpen=true;
+
+let neutralHeadX=null;
+let neutralHeadY=null;
+let neutralIrisX=null;
+let neutralIrisY=null;
+let neutralSamples=[];
+
+let blinkLatched=false;
+let blinkCounter=0;
+let stableCombined="Midden";
+let directionCandidate="Midden";
+let directionCandidateFrames=0;
+
+let latestFeatures=null;
+let gazeModelX=null;
+let gazeModelY=null;
+let gazeCalibrating=false;
+let gazeCalibrationSamples=[];
+let gazePointIndex=0;
+let gazePointStartedAt=0;
+let gazePointBuffer=[];
+let gazeSmoothX=innerWidth/2;
+let gazeSmoothY=innerHeight/2;
+let mirrorGazeX=true;
+
+function log(message){
+  const time=new Date().toLocaleTimeString();
+  logBox.textContent+="["+time+"] "+message+"\n";
+}
+
+function setStatus(message,good=false){
+  statusBox.textContent=message;
+  statusBox.style.color=good?"var(--good)":"var(--text)";
+}
+
+function dist(a,b){
+  return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function avg(values){
+  return values.reduce((a,b)=>a+b,0)/values.length;
+}
+
+function median(values){
+  const s=[...values].sort((a,b)=>a-b);
+  const m=Math.floor(s.length/2);
+  return s.length%2?s[m]:(s[m-1]+s[m])/2;
+}
+
+function clamp(value,min,max){
+  return Math.max(min,Math.min(max,value));
+}
+
+function eyeAspectRatio(lm,side){
+  let outer,inner,upper1,lower1,upper2,lower2;
+  if(side==="left"){
+    outer=lm[33]; inner=lm[133];
+    upper1=lm[159]; lower1=lm[145];
+    upper2=lm[160]; lower2=lm[144];
+  }else{
+    outer=lm[263]; inner=lm[362];
+    upper1=lm[386]; lower1=lm[374];
+    upper2=lm[385]; lower2=lm[380];
+  }
+  const horizontal=dist(outer,inner);
+  const vertical=(dist(upper1,lower1)+dist(upper2,lower2))/2;
+  return horizontal>0?vertical/horizontal:0;
+}
+
+function irisMetrics(lm){
+  if(!lm||lm.length<478)return{x:.5,y:.5};
+
+  const leftIris={x:avg([468,469,470,471,472].map(i=>lm[i].x)),y:avg([468,469,470,471,472].map(i=>lm[i].y))};
+  const rightIris={x:avg([473,474,475,476,477].map(i=>lm[i].x)),y:avg([473,474,475,476,477].map(i=>lm[i].y))};
+
+  const leftOuter=lm[33],leftInner=lm[133],leftTop=lm[159],leftBottom=lm[145];
+  const rightInner=lm[362],rightOuter=lm[263],rightTop=lm[386],rightBottom=lm[374];
+
+  const lx=(leftIris.x-leftOuter.x)/(leftInner.x-leftOuter.x);
+  const rx=(rightIris.x-rightInner.x)/(rightOuter.x-rightInner.x);
+  const ly=(leftIris.y-leftTop.y)/(leftBottom.y-leftTop.y);
+  const ry=(rightIris.y-rightTop.y)/(rightBottom.y-rightTop.y);
+
+  return{x:(lx+rx)/2,y:(ly+ry)/2};
+}
+
+function headMetrics(lm){
+  const leftFace=lm[234];
+  const rightFace=lm[454];
+  const forehead=lm[10];
+  const chin=lm[152];
+  const nose=lm[1];
+
+  const faceWidth=Math.max(.0001,dist(leftFace,rightFace));
+  const faceHeight=Math.max(.0001,dist(forehead,chin));
+  const faceCenterX=(leftFace.x+rightFace.x)/2;
+  const faceCenterY=(forehead.y+chin.y)/2;
+
+  return{
+    x:(nose.x-faceCenterX)/faceWidth,
+    y:(nose.y-faceCenterY)/faceHeight
+  };
+}
+
+function directionFromDelta(dx,dy,xThreshold,yThreshold){
+  const horizontal=Math.abs(dx)>xThreshold?(dx>0?"Links":"Rechts"):"";
+  const vertical=Math.abs(dy)>yThreshold?(dy>0?"Omlaag":"Omhoog"):"";
+  return vertical&&horizontal?vertical+" "+horizontal:(vertical||horizontal||"Midden");
+}
+
+function smoothDirection(next){
+  if(next===directionCandidate){
+    directionCandidateFrames++;
+  }else{
+    directionCandidate=next;
+    directionCandidateFrames=1;
+  }
+  if(directionCandidateFrames>=5)stableCombined=next;
+  return stableCombined;
+}
+
+
+function solveLinearSystem(A,b){
+  const n=A.length;
+  const M=A.map((row,i)=>[...row,b[i]]);
+  for(let col=0;col<n;col++){
+    let pivot=col;
+    for(let r=col+1;r<n;r++){
+      if(Math.abs(M[r][col])>Math.abs(M[pivot][col]))pivot=r;
+    }
+    [M[col],M[pivot]]=[M[pivot],M[col]];
+    const div=M[col][col];
+    if(Math.abs(div)<1e-10)throw new Error("Kalibratiematrix is niet oplosbaar");
+    for(let c=col;c<=n;c++)M[col][c]/=div;
+    for(let r=0;r<n;r++){
+      if(r===col)continue;
+      const factor=M[r][col];
+      for(let c=col;c<=n;c++)M[r][c]-=factor*M[col][c];
+    }
+  }
+  return M.map(row=>row[n]);
+}
+
+function fitLinearRegression(samples,targetKey){
+  const featureCount=5;
+  const XtX=Array.from({length:featureCount},()=>Array(featureCount).fill(0));
+  const Xty=Array(featureCount).fill(0);
+
+  for(const sample of samples){
+    const x=[1,sample.irisX,sample.irisY,sample.headX,sample.headY];
+    const y=sample[targetKey];
+    for(let i=0;i<featureCount;i++){
+      Xty[i]+=x[i]*y;
+      for(let j=0;j<featureCount;j++)XtX[i][j]+=x[i]*x[j];
+    }
+  }
+
+  for(let i=0;i<featureCount;i++)XtX[i][i]+=0.00001;
+  return solveLinearSystem(XtX,Xty);
+}
+
+function predictLinear(coeff,f){
+  return coeff[0]+coeff[1]*f.irisX+coeff[2]*f.irisY+coeff[3]*f.headX+coeff[4]*f.headY;
+}
+
+const gazeTargets=[
+  {x:.50,y:.50,label:"midden"},
+  {x:.12,y:.14,label:"linksboven"},
+  {x:.88,y:.14,label:"rechtsboven"},
+  {x:.12,y:.86,label:"linksonder"},
+  {x:.88,y:.86,label:"rechtsonder"}
+];
+
+function startGazeCalibration(){
+  if(!latestFeatures){
+    setStatus("Nog geen stabiele gezichtsmeting beschikbaar");
+    return;
+  }
+  gazeCalibrating=true;
+  gazeCalibrationSamples=[];
+  gazePointIndex=0;
+  gazePointBuffer=[];
+  gazeCalibration.style.display="block";
+  gazeCursor.style.display="none";
+  showNextGazePoint();
+  log("5-punts kijkkalibratie gestart");
+}
+
+function showNextGazePoint(){
+  if(gazePointIndex>=gazeTargets.length){
+    finishGazeCalibration();
+    return;
+  }
+
+  const target=gazeTargets[gazePointIndex];
+  gazePoint.style.left=(target.x*100)+"%";
+  gazePoint.style.top=(target.y*100)+"%";
+  gazePoint.style.display="block";
+  gazePointBuffer=[];
+  gazePointStartedAt=performance.now();
+  gazeProgress.textContent=`Punt ${gazePointIndex+1} van ${gazeTargets.length}: kijk naar ${target.label}`;
+}
+
+function collectGazeCalibration(now){
+  if(!gazeCalibrating||!latestFeatures)return;
+  const elapsed=now-gazePointStartedAt;
+
+  if(elapsed>600&&elapsed<2100){
+    gazePointBuffer.push({...latestFeatures});
+  }
+
+  if(elapsed>=2200){
+    if(gazePointBuffer.length<8){
+      gazePointStartedAt=now;
+      gazePointBuffer=[];
+      return;
+    }
+
+    const target=gazeTargets[gazePointIndex];
+    const sample={
+      irisX:median(gazePointBuffer.map(v=>v.irisX)),
+      irisY:median(gazePointBuffer.map(v=>v.irisY)),
+      headX:median(gazePointBuffer.map(v=>v.headX)),
+      headY:median(gazePointBuffer.map(v=>v.headY)),
+      screenX:target.x*innerWidth,
+      screenY:target.y*innerHeight
+    };
+    gazeCalibrationSamples.push(sample);
+    gazePointIndex++;
+    showNextGazePoint();
+  }
+}
+
+function finishGazeCalibration(){
+  try{
+    gazeModelX=fitLinearRegression(gazeCalibrationSamples,"screenX");
+    gazeModelY=fitLinearRegression(gazeCalibrationSamples,"screenY");
+    gazeCalibrating=false;
+    gazeCalibration.style.display="none";
+    gazePoint.style.display="none";
+    gazeCursor.style.display="block";
+    setStatus("5-punts kijkkalibratie gereed. Kijk nu rond op het scherm.",true);
+    log("Kijkkalibratie gereed");
+  }catch(error){
+    gazeCalibrating=false;
+    gazeCalibration.style.display="none";
+    setStatus("Kijkkalibratie mislukt: "+error.message);
+    log(error.stack||String(error));
+  }
+}
+
+function updateCalibratedGaze(){
+  if(!gazeModelX||!gazeModelY||!latestFeatures||gazeCalibrating)return;
+
+  const rawX=predictLinear(gazeModelX,latestFeatures);
+  const rawY=predictLinear(gazeModelY,latestFeatures);
+
+  const correctedX=mirrorGazeX?(innerWidth-rawX):rawX;
+  const x=clamp(correctedX,0,innerWidth);
+  const y=clamp(rawY,0,innerHeight);
+
+  const smoothing=.34;
+  gazeSmoothX+=(x-gazeSmoothX)*smoothing;
+  gazeSmoothY+=(y-gazeSmoothY)*smoothing;
+
+  gazeCursor.style.left=gazeSmoothX+"px";
+  gazeCursor.style.top=gazeSmoothY+"px";
+}
+
+function resetOpenCalibration(){
+  openSamplesLeft=[];
+  openSamplesRight=[];
+  openBaselineLeft=null;
+  openBaselineRight=null;
+  neutralSamples=[];
+  calibratingOpen=true;
+  $("baseline").textContent="Meten...";
+  $("baselineFrames").textContent="0 / 60 frames";
+  setStatus("Houd je hoofd recht en ogen normaal open. Basislijn wordt gemeten.");
+  log("Open ogen kalibratie opnieuw gestart");
+}
+
+async function createLandmarker(){
+  setStatus("MediaPipe bestanden en gezichtsmodel worden geladen...");
+  const fileset=await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+  );
+
+  const options={
+    baseOptions:{
+      modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate:"GPU"
+    },
+    runningMode:"VIDEO",
+    numFaces:1,
+    outputFaceBlendshapes:false,
+    minFaceDetectionConfidence:0.5,
+    minFacePresenceConfidence:0.5,
+    minTrackingConfidence:0.5
+  };
+
+  try{
+    landmarker=await FaceLandmarker.createFromOptions(fileset,options);
+    log("Model geladen met GPU");
+  }catch(error){
+    log("GPU mislukt, CPU fallback: "+error.message);
+    options.baseOptions.delegate="CPU";
+    landmarker=await FaceLandmarker.createFromOptions(fileset,options);
+    log("Model geladen met CPU");
+  }
+
+  setStatus("Model gereed. Tik op Start MediaPipe.",true);
+  startButton.disabled=false;
+}
+
+async function startCamera(){
+  startButton.disabled=true;
+  setStatus("Camera wordt geopend...");
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+    canvas.width=video.videoWidth||640;
+    canvas.height=video.videoHeight||480;
+    drawingUtils=new DrawingUtils(ctx);
+    running=true;
+    recalibrateButton.disabled=false;
+    gazeCalibrateButton.disabled=false;
+    mirrorXButton.disabled=false;
+    resetOpenCalibration();
+    log("Camera gestart: "+canvas.width+"x"+canvas.height);
+    requestAnimationFrame(predict);
+  }catch(error){
+    setStatus(error.name+": "+error.message);
+    log(error.stack||String(error));
+    startButton.disabled=false;
+  }
+}
+
+function drawEyes(landmarks){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawingUtils.drawConnectors(landmarks,FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,{color:"#61dc86",lineWidth:2});
+  drawingUtils.drawConnectors(landmarks,FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,{color:"#ff6269",lineWidth:2});
+  drawingUtils.drawConnectors(landmarks,FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS,{color:"#ffffff",lineWidth:2});
+  drawingUtils.drawConnectors(landmarks,FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS,{color:"#ffffff",lineWidth:2});
+}
+
+function finishCalibration(){
+  openBaselineLeft=median(openSamplesLeft);
+  openBaselineRight=median(openSamplesRight);
+
+  neutralHeadX=avg(neutralSamples.map(s=>s.hx));
+  neutralHeadY=avg(neutralSamples.map(s=>s.hy));
+  neutralIrisX=avg(neutralSamples.map(s=>s.ix));
+  neutralIrisY=avg(neutralSamples.map(s=>s.iy));
+
+  calibratingOpen=false;
+  $("baseline").textContent="Gereed";
+  $("baselineFrames").textContent=
+    "L "+openBaselineLeft.toFixed(3)+" | R "+openBaselineRight.toFixed(3);
+  setStatus("Basislijn gereed. Beweeg nu bewust je hoofd en knipper.",true);
+  log("Basislijn gereed");
+}
+
+function predict(now){
+  if(!running)return;
+  requestAnimationFrame(predict);
+
+  if(video.readyState<2||video.currentTime===lastVideoTime||now-lastRun<65)return;
+  lastVideoTime=video.currentTime;
+  lastRun=now;
+
+  try{
+    const result=landmarker.detectForVideo(video,performance.now());
+    const lm=result.faceLandmarks?.[0];
+
+    if(!lm){
+      $("face").textContent="Nee";
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      return;
+    }
+
+    $("face").textContent="Ja";
+    drawEyes(lm);
+
+    const earL=eyeAspectRatio(lm,"left");
+    const earR=eyeAspectRatio(lm,"right");
+    const iris=irisMetrics(lm);
+    const head=headMetrics(lm);
+
+    latestFeatures={
+      irisX:iris.x,
+      irisY:iris.y,
+      headX:head.x,
+      headY:head.y
+    };
+    collectGazeCalibration(now);
+    updateCalibratedGaze();
+
+    $("earLeft").textContent="EAR "+earL.toFixed(3);
+    $("earRight").textContent="EAR "+earR.toFixed(3);
+    $("headRaw").textContent="x "+head.x.toFixed(3)+" | y "+head.y.toFixed(3);
+    $("irisRaw").textContent="x "+iris.x.toFixed(3)+" | y "+iris.y.toFixed(3);
+
+    if(calibratingOpen){
+      if(earL>.12&&earR>.12){
+        openSamplesLeft.push(earL);
+        openSamplesRight.push(earR);
+        neutralSamples.push({hx:head.x,hy:head.y,ix:iris.x,iy:iris.y});
+        $("baselineFrames").textContent=openSamplesLeft.length+" / 60 frames";
+      }
+      if(openSamplesLeft.length>=60)finishCalibration();
+      return;
+    }
+
+    const blinkL=clamp(1-earL/openBaselineLeft,0,1);
+    const blinkR=clamp(1-earR/openBaselineRight,0,1);
+    const blinkPctL=Math.round(blinkL*100);
+    const blinkPctR=Math.round(blinkR*100);
+
+    $("blinkLeft").textContent=blinkPctL+"%";
+    $("blinkRight").textContent=blinkPctR+"%";
+    $("blinkLeftBar").style.width=blinkPctL+"%";
+    $("blinkRightBar").style.width=blinkPctR+"%";
+
+    const bothClosed=blinkL>.38&&blinkR>.38;
+    const oneClosed=(blinkL>.42)!==(blinkR>.42);
+
+    if(bothClosed){
+      $("blinkState").textContent="Beide dicht";
+      $("blinkState").style.color="var(--bad)";
+      if(!blinkLatched){
+        blinkLatched=true;
+        blinkCounter++;
+        $("blinkCount").textContent="Knippers: "+blinkCounter;
+      }
+    }else if(oneClosed){
+      $("blinkState").textContent=blinkL>blinkR?"Links dicht":"Rechts dicht";
+      $("blinkState").style.color="var(--accent)";
+    }else{
+      $("blinkState").textContent="Open";
+      $("blinkState").style.color="var(--good)";
+      if(blinkL<.18&&blinkR<.18)blinkLatched=false;
+    }
+
+    const headDx=head.x-neutralHeadX;
+    const headDy=head.y-neutralHeadY;
+    const irisDx=iris.x-neutralIrisX;
+    const irisDy=iris.y-neutralIrisY;
+
+    const headDir=directionFromDelta(headDx,headDy,.045,.055);
+    const irisDir=directionFromDelta(irisDx,irisDy,.075,.090);
+
+    $("headDirection").textContent=headDir;
+    $("irisDirection").textContent=irisDir;
+
+    let combined=headDir!=="Midden"?headDir:irisDir;
+    combined=smoothDirection(combined);
+    $("combinedDirection").textContent=combined;
+
+  }catch(error){
+    running=false;
+    setStatus("Detectiefout: "+error.message);
+    log(error.stack||String(error));
+  }
+}
+
+startButton.addEventListener("click",startCamera);
+recalibrateButton.addEventListener("click",resetOpenCalibration);
+gazeCalibrateButton.addEventListener("click",startGazeCalibration);
+mirrorXButton.addEventListener("click",()=>{
+  mirrorGazeX=!mirrorGazeX;
+  mirrorXButton.textContent="Horizontaal gespiegeld: "+(mirrorGazeX?"aan":"uit");
+  log("Horizontale spiegeling "+(mirrorGazeX?"aan":"uit"));
+});
+
+window.addEventListener("error",event=>log("window.error: "+event.message));
+window.addEventListener("unhandledrejection",event=>log("unhandledrejection: "+String(event.reason)));
+
+createLandmarker().catch(error=>{
+  setStatus("Model laden mislukt: "+error.message);
+  log(error.stack||String(error));
+});
+</script>
+</body>
+</html>
