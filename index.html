@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Texed Eye Test v0.3 Diagnostic</title>
+<script>
+window.__webgazerLoaded=false;
+</script>
+<script src="https://cdn.jsdelivr.net/npm/webgazer@3.5.3/dist/webgazer.js"
+        onload="window.__webgazerLoaded=true"
+        onerror="console.error('Primary WebGazer CDN failed')"></script>
+<script>
+(function(){
+  if(window.webgazer){
+    window.__webgazerLoaded=true;
+    return;
+  }
+  const fallback=document.createElement("script");
+  fallback.src="https://cdn.jsdelivr.net/gh/brownhci/WebGazer@v3.5.3/dist/webgazer.js";
+  fallback.onload=()=>{window.__webgazerLoaded=true;};
+  fallback.onerror=()=>{console.error("WebGazer fallback CDN failed");};
+  document.head.appendChild(fallback);
+})();
+</script>
+<style>
+:root{
+  --bg:#121417;
+  --panel:#1d2127;
+  --panel2:#262c34;
+  --text:#f4f6f8;
+  --muted:#aeb7c2;
+  --accent:#ff8a22;
+  --good:#67dc86;
+  --danger:#ff5f66;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:Arial,Helvetica,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  overflow:hidden;
+}
+button{
+  border:1px solid #3b434d;
+  border-radius:10px;
+  background:var(--panel2);
+  color:var(--text);
+  min-height:44px;
+  padding:9px 14px;
+  font-weight:700;
+  cursor:pointer;
+}
+button:hover{border-color:#77818e}
+button.eye-hover{
+  outline:4px solid var(--accent);
+  outline-offset:3px;
+  box-shadow:0 0 24px rgba(255,138,34,.65);
+}
+button:disabled{opacity:.45;cursor:not-allowed}
+#app{
+  height:100%;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+}
+#toolbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  padding:10px;
+  background:#171a1f;
+  border-bottom:1px solid #30363e;
+  z-index:20;
+}
+#brand{
+  font-size:20px;
+  font-weight:900;
+  color:var(--accent);
+  margin-right:6px;
+}
+#status{
+  margin-left:auto;
+  min-width:230px;
+  color:var(--muted);
+  text-align:right;
+  font-size:13px;
+}
+#workspace{
+  position:relative;
+  min-height:0;
+  display:grid;
+  grid-template-columns:1fr 280px;
+}
+#editorWrap{
+  position:relative;
+  min-width:0;
+  min-height:0;
+  padding:18px 70px;
+}
+#editor{
+  width:100%;
+  height:100%;
+  overflow:auto;
+  background:#f8f4ea;
+  color:#191919;
+  border-radius:14px;
+  padding:28px;
+  font:20px/1.65 Georgia,serif;
+  box-shadow:inset 0 0 0 1px #d9d1c2;
+  outline:none;
+  white-space:pre-wrap;
+}
+#editor:focus{box-shadow:inset 0 0 0 3px var(--accent)}
+#side{
+  padding:14px;
+  border-left:1px solid #30363e;
+  background:#171a1f;
+  overflow:auto;
+}
+.panel{
+  background:var(--panel);
+  border:1px solid #30363e;
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:12px;
+}
+.panel h3{margin:0 0 8px;font-size:15px}
+.panel p{margin:6px 0;color:var(--muted);font-size:13px;line-height:1.45}
+#log{
+  height:170px;
+  overflow:auto;
+  font:12px/1.4 monospace;
+  color:#cbd3dc;
+  white-space:pre-wrap;
+}
+.scroll-zone{
+  position:absolute;
+  left:8px;
+  width:50px;
+  height:35%;
+  border:2px dashed rgba(255,138,34,.45);
+  border-radius:12px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  color:var(--accent);
+  font-size:25px;
+  font-weight:900;
+  opacity:.35;
+  z-index:8;
+}
+.scroll-zone.eye-hover{
+  opacity:1;
+  background:rgba(255,138,34,.14);
+  box-shadow:0 0 24px rgba(255,138,34,.55);
+}
+#scrollUp{top:8%}
+#scrollDown{bottom:8%}
+#gazeDot{
+  position:fixed;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  border:3px solid #fff;
+  background:rgba(255,95,102,.75);
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:99998;
+  display:none;
+  box-shadow:0 0 13px rgba(255,95,102,.9);
+}
+#dwellRing{
+  position:fixed;
+  width:46px;
+  height:46px;
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:99999;
+  display:none;
+  background:conic-gradient(var(--accent) 0deg,rgba(255,255,255,.15) 0deg);
+  mask:radial-gradient(circle,transparent 55%,#000 57%);
+  -webkit-mask:radial-gradient(circle,transparent 55%,#000 57%);
+}
+#calibration{
+  position:fixed;
+  inset:0;
+  background:rgba(10,12,15,.96);
+  z-index:100000;
+  display:none;
+}
+.cal-point{
+  position:absolute;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  border:4px solid white;
+  background:var(--danger);
+  transform:translate(-50%,-50%);
+  cursor:pointer;
+  box-shadow:0 0 18px rgba(255,95,102,.75);
+}
+.cal-point.done{background:var(--good);opacity:.55}
+#calInfo{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  max-width:460px;
+  text-align:center;
+  pointer-events:none;
+}
+#calInfo h2{margin:0 0 8px}
+#calInfo p{color:var(--muted)}
+#footer{
+  padding:7px 12px;
+  border-top:1px solid #30363e;
+  background:#171a1f;
+  color:var(--muted);
+  font-size:12px;
+}
+.selection-marker{
+  background:#ffe45f;
+}
+@media(max-width:850px){
+  #workspace{grid-template-columns:1fr}
+  #side{display:none}
+  #editorWrap{padding-right:16px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="toolbar">
+    <div id="brand">TEXED EYE TEST v0.3</div>
+    <button data-eye-action="start" id="startEye">Start camera</button>
+    <button data-eye-action="calibrate" id="calibrateBtn" disabled>Calibrate</button>
+    <button data-eye-action="pause" id="pauseBtn" disabled>Pause eye control</button>
+    <button data-eye-action="copy" id="copyBtn">Copy selection</button>
+    <button data-eye-action="select-start" id="selectionStartBtn" disabled>Set selection start</button>
+    <button data-eye-action="select-end" id="selectionEndBtn" disabled>Set selection end</button>
+    <button data-eye-action="clear" id="clearBtn">Clear</button>
+    <div id="status">Camera not started</div>
+  </header>
+
+  <main id="workspace">
+    <section id="editorWrap">
+      <div id="scrollUp" class="scroll-zone" data-eye-action="scroll-up" aria-label="Scroll omhoog">▲</div>
+      <div id="scrollDown" class="scroll-zone" data-eye-action="scroll-down" aria-label="Scroll omlaag">▼</div>
+      <div id="editor" contenteditable="true" spellcheck="true">Texed Eye Test
+
+Dit is een eerste testomgeving voor bediening met je ogen. Start de camera en voer daarna de kalibratie uit. Kijk tijdens de kalibratie steeds naar de rode stip en klik meerdere keren op dezelfde stip totdat deze groen wordt.
+
+Na de kalibratie verschijnt een gaze cursor. Kijk ongeveer één seconde naar een knop om hem te activeren. Een cirkel rond het kijkpunt laat zien hoe ver de dwell actie is gevorderd.
+
+SCROLLTEST
+
+Kijk naar de zone met de pijl aan de linker bovenkant om omhoog te scrollen. Kijk naar de zone linksonder om omlaag te scrollen. Kijk terug naar de tekst om het scrollen te stoppen.
+
+SELECTIETEST
+
+Kijk naar een woord in deze tekst en activeer Set selection start. Kijk daarna naar een later woord en activeer Set selection end. De tekst tussen beide punten wordt geselecteerd. Activeer vervolgens Copy selection.
+
+Deze eerste selectiemethode gebruikt de laatst gemeten gaze positie. Daardoor is hij nog niet pixelprecies. Voor een eerste praktijktest is dat nuttig, omdat zichtbaar wordt hoeveel stabilisatie en magnetische woorddetectie nodig zijn.
+
+LANGE TESTTEKST
+
+Eyetracking via een gewone webcam is minder precies dan gespecialiseerde hardware. De positie van het hoofd, de lichtinval, een bril en de afstand tot het scherm hebben invloed op het resultaat. Een vaste zitpositie en gelijkmatige verlichting helpen meestal sterk.
+
+Het doel van deze test is niet om meteen perfecte bediening te leveren. Het doel is om te ontdekken welke acties prettig voelen, welke dwell tijd goed werkt en hoe groot knoppen en scrollzones moeten zijn.
+
+Later kunnen we magnetische knopselectie, woordmarkering, een instelbare dwell tijd, knippercommando's en een bookmarkletmodus toevoegen.
+
+Blijf voor deze test redelijk stil zitten. Herkalibreer wanneer de cursor structureel te ver naar links, rechts, boven of beneden staat.
+
+EINDE VAN DE LANGE TESTTEKST.</div>
+    </section>
+
+    <aside id="side">
+      <div class="panel">
+        <h3>Testinstellingen</h3>
+        <p>Dwell tijd: <strong id="dwellLabel">1100 ms</strong></p>
+        <input id="dwellInput" type="range" min="600" max="2200" value="1100" step="100" style="width:100%">
+        <p>Scrollsnelheid: <strong id="speedLabel">5</strong></p>
+        <input id="speedInput" type="range" min="1" max="15" value="5" step="1" style="width:100%">
+      </div>
+      <div class="panel">
+        <h3>Bediening</h3>
+        <p>Kijk naar een knop totdat de ring vol is.</p>
+        <p>Wegkijken annuleert de actie.</p>
+        <p>De editor blijft ook normaal met muis en toetsenbord bruikbaar.</p>
+      </div>
+      <div class="panel">
+        <h3>Logboek</h3>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer id="footer">Webcambeelden worden door WebGazer lokaal in de browser verwerkt. Open dit bestand via HTTPS of localhost wanneer de browser cameratoegang bij lokale bestanden weigert.</footer>
+</div>
+
+<div id="gazeDot"></div>
+<div id="dwellRing"></div>
+
+<div id="calibration">
+  <div id="calInfo">
+    <h2>Kalibratie</h2>
+    <p>Kijk naar iedere rode stip en klik er vijf keer op. Houd je hoofd zo stil mogelijk.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = selector => document.querySelector(selector);
+  const editor = $("#editor");
+  const gazeDot = $("#gazeDot");
+  const dwellRing = $("#dwellRing");
+  const status = $("#status");
+  const logBox = $("#log");
+
+  let eyeStarted = false;
+  let eyePaused = false;
+  let gaze = {x: innerWidth / 2, y: innerHeight / 2};
+  let smoothed = {...gaze};
+  let currentTarget = null;
+  let targetSince = 0;
+  let firedForTarget = false;
+  let dwellMs = 1100;
+  let scrollSpeed = 5;
+  let scrollTimer = null;
+  let selectionStart = null;
+  let selectionEnd = null;
+
+  const log = text => {
+    const time = new Date().toLocaleTimeString();
+    logBox.textContent = `[${time}] ${text}\n` + logBox.textContent;
+  };
+
+  function setStatus(text, good = false) {
+    status.textContent = text;
+    status.style.color = good ? "var(--good)" : "var(--muted)";
+  }
+
+  function getEyeTarget(x, y) {
+    const elements = document.elementsFromPoint(x, y);
+    return elements.find(el =>
+      el.matches?.("[data-eye-action]") &&
+      !el.disabled &&
+      el.offsetParent !== null
+    ) || null;
+  }
+
+  function clearTarget() {
+    currentTarget?.classList.remove("eye-hover");
+    currentTarget = null;
+    targetSince = 0;
+    firedForTarget = false;
+    dwellRing.style.display = "none";
+    stopScroll();
+  }
+
+  function beginScroll(direction) {
+    stopScroll();
+    scrollTimer = setInterval(() => {
+      editor.scrollTop += direction * scrollSpeed;
+    }, 16);
+  }
+
+  function stopScroll() {
+    if (scrollTimer) {
+      clearInterval(scrollTimer);
+      scrollTimer = null;
+    }
+  }
+
+  async function activateTarget(target) {
+    const action = target.dataset.eyeAction;
+    log(`Eye action: ${action}`);
+
+    if (action === "scroll-up") {
+      beginScroll(-1);
+      firedForTarget = false;
+      targetSince = performance.now();
+      return;
+    }
+    if (action === "scroll-down") {
+      beginScroll(1);
+      firedForTarget = false;
+      targetSince = performance.now();
+      return;
+    }
+
+    target.click();
+  }
+
+  function updateDwell(now) {
+    if (!eyeStarted || eyePaused) return;
+
+    const target = getEyeTarget(smoothed.x, smoothed.y);
+
+    if (target !== currentTarget) {
+      clearTarget();
+      currentTarget = target;
+      if (target) {
+        target.classList.add("eye-hover");
+        targetSince = now;
+      }
+    }
+
+    if (!currentTarget) return;
+
+    const progress = Math.min(1, (now - targetSince) / dwellMs);
+    dwellRing.style.display = "block";
+    dwellRing.style.left = smoothed.x + "px";
+    dwellRing.style.top = smoothed.y + "px";
+    dwellRing.style.background =
+      `conic-gradient(var(--accent) ${progress * 360}deg,rgba(255,255,255,.15) 0deg)`;
+
+    if (progress >= 1 && !firedForTarget) {
+      firedForTarget = true;
+      activateTarget(currentTarget);
+    }
+  }
+
+  function animationLoop(now) {
+    updateDwell(now);
+    requestAnimationFrame(animationLoop);
+  }
+  requestAnimationFrame(animationLoop);
+
+  function friendlyCameraError(error) {
+    const name = error?.name || "Onbekende fout";
+    const message = error?.message || "";
+    const details = `${name}${message ? ": " + message : ""}`;
+
+    if (!window.isSecureContext) {
+      return `Onveilige pagina. Open de echte HTTPS GitHub Pages URL.\n\nTechnisch: ${details}`;
+    }
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      return `Safari heeft geen cameratoestemming voor dit domein.\n\nGa naar Safari > Instellingen > Websites > Camera en zet deze website op Sta toe.\nControleer ook macOS Systeeminstellingen > Privacy en beveiliging > Camera > Safari.\n\nTechnisch: ${details}`;
+    }
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      return `Er is geen beschikbare camera gevonden.\n\nTechnisch: ${details}`;
+    }
+    if (name === "NotReadableError" || name === "TrackStartError") {
+      return `De camera is gevonden, maar kan niet worden geopend. Sluit FaceTime, Photo Booth, Zoom en andere apps die de camera gebruiken en laad de pagina opnieuw.\n\nTechnisch: ${details}`;
+    }
+    if (name === "OverconstrainedError") {
+      return `De gevraagde camera-instellingen worden niet ondersteund.\n\nTechnisch: ${details}`;
+    }
+    return `Camera of WebGazer kon niet starten.\n\nTechnisch: ${details}`;
+  }
+
+  async function testCameraPermission() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("navigator.mediaDevices.getUserMedia ontbreekt");
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" },
+      audio: false
+    });
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  async function startEyeTracking() {
+    if (eyeStarted) return;
+    if (!window.webgazer) {
+      alert("WebGazer kon niet worden geladen. Vernieuw de pagina en controleer de browserconsole.");
+      return;
+    }
+
+    setStatus("Cameratoestemming controleren...");
+    try {
+      await testCameraPermission();
+      log("Losse cameratest geslaagd");
+
+      setStatus("WebGazer wordt gestart...");
+      webgazer
+        .setRegression("ridge")
+        .showVideoPreview(true)
+        .showPredictionPoints(false)
+        .saveDataAcrossSessions(false)
+        .setGazeListener(data => {
+          if (!data || eyePaused) return;
+          gaze.x = data.x;
+          gaze.y = data.y;
+          const smoothing = 0.22;
+          smoothed.x += (gaze.x - smoothed.x) * smoothing;
+          smoothed.y += (gaze.y - smoothed.y) * smoothing;
+          gazeDot.style.display = "block";
+          gazeDot.style.left = smoothed.x + "px";
+          gazeDot.style.top = smoothed.y + "px";
+        });
+
+      await webgazer.begin();
+      eyeStarted = true;
+      $("#startEye").disabled = true;
+      $("#calibrateBtn").disabled = false;
+      $("#pauseBtn").disabled = false;
+      $("#selectionStartBtn").disabled = false;
+      $("#selectionEndBtn").disabled = false;
+      setStatus("Camera actief, voer kalibratie uit", true);
+      log("WebGazer en camera gestart");
+    } catch (error) {
+      console.error("Startfout:", error);
+      const report = friendlyCameraError(error);
+      setStatus(`${error?.name || "Startfout"}: ${error?.message || "onbekend"}`);
+      log(report.replaceAll("\n", " "));
+      alert(report);
+    }
+  }
+
+  function startCalibration() {
+    if (!eyeStarted) return;
+    eyePaused = true;
+    clearTarget();
+    const overlay = $("#calibration");
+    overlay.style.display = "block";
+    overlay.querySelectorAll(".cal-point").forEach(el => el.remove());
+
+    const positions = [
+      [8,10],[50,10],[92,10],
+      [8,50],[50,50],[92,50],
+      [8,90],[50,90],[92,90]
+    ];
+    let completed = 0;
+
+    positions.forEach(([x,y], index) => {
+      const point = document.createElement("button");
+      point.className = "cal-point";
+      point.style.left = x + "%";
+      point.style.top = y + "%";
+      point.title = `Kalibratiepunt ${index + 1}`;
+      point.dataset.clicks = "0";
+
+      point.addEventListener("click", event => {
+        const count = Number(point.dataset.clicks) + 1;
+        point.dataset.clicks = count;
+        webgazer.recordScreenPosition(event.clientX, event.clientY, "click");
+
+        const scale = 1 + count * .08;
+        point.style.transform = `translate(-50%,-50%) scale(${scale})`;
+
+        if (count >= 5 && !point.classList.contains("done")) {
+          point.classList.add("done");
+          completed++;
+          if (completed === positions.length) {
+            setTimeout(() => {
+              overlay.style.display = "none";
+              eyePaused = false;
+              setStatus("Gekalibreerd, eye control actief", true);
+              log("Kalibratie voltooid");
+            }, 500);
+          }
+        }
+      });
+      overlay.appendChild(point);
+    });
+  }
+
+  function caretFromGaze() {
+    const x = Math.max(0, Math.min(innerWidth - 1, smoothed.x));
+    const y = Math.max(0, Math.min(innerHeight - 1, smoothed.y));
+
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) return {node: pos.offsetNode, offset: pos.offset};
+    }
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(x, y);
+      if (range) return {node: range.startContainer, offset: range.startOffset};
+    }
+    return null;
+  }
+
+  function validEditorPoint(point) {
+    return point && (point.node === editor || editor.contains(point.node));
+  }
+
+  function applySelection() {
+    if (!selectionStart || !selectionEnd) return;
+    try {
+      const range = document.createRange();
+      range.setStart(selectionStart.node, selectionStart.offset);
+      range.setEnd(selectionEnd.node, selectionEnd.offset);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
+      log("Tekstselectie toegepast");
+    } catch {
+      try {
+        const range = document.createRange();
+        range.setStart(selectionEnd.node, selectionEnd.offset);
+        range.setEnd(selectionStart.node, selectionStart.offset);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor.focus();
+        log("Omgekeerde tekstselectie toegepast");
+      } catch (error) {
+        console.error(error);
+        log("Selectie kon niet worden toegepast");
+      }
+    }
+  }
+
+  async function copySelection() {
+    const text = window.getSelection()?.toString() || "";
+    if (!text) {
+      alert("Er is nog geen tekst geselecteerd.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`${text.length} tekens gekopieerd`, true);
+      log(`${text.length} tekens gekopieerd`);
+    } catch {
+      document.execCommand("copy");
+      setStatus("Selectie gekopieerd", true);
+      log("Selectie gekopieerd via fallback");
+    }
+  }
+
+  $("#startEye").addEventListener("click", startEyeTracking);
+  $("#calibrateBtn").addEventListener("click", startCalibration);
+  $("#pauseBtn").addEventListener("click", () => {
+    eyePaused = !eyePaused;
+    $("#pauseBtn").textContent = eyePaused ? "Resume eye control" : "Pause eye control";
+    gazeDot.style.display = eyePaused ? "none" : "block";
+    if (eyePaused) clearTarget();
+    setStatus(eyePaused ? "Eye control gepauzeerd" : "Eye control actief", !eyePaused);
+    log(eyePaused ? "Eye control gepauzeerd" : "Eye control hervat");
+  });
+  $("#copyBtn").addEventListener("click", copySelection);
+  $("#clearBtn").addEventListener("click", () => {
+    if (confirm("Alle tekst wissen?")) editor.innerHTML = "";
+  });
+
+  $("#selectionStartBtn").addEventListener("click", () => {
+    const point = caretFromGaze();
+    if (!validEditorPoint(point)) {
+      setStatus("Kijk eerst naar tekst in de editor");
+      log("Geen geldig selectie beginpunt");
+      return;
+    }
+    selectionStart = point;
+    selectionEnd = null;
+    setStatus("Selectie beginpunt vastgelegd", true);
+    log("Selectie beginpunt vastgelegd");
+  });
+
+  $("#selectionEndBtn").addEventListener("click", () => {
+    const point = caretFromGaze();
+    if (!selectionStart) {
+      setStatus("Leg eerst het beginpunt vast");
+      return;
+    }
+    if (!validEditorPoint(point)) {
+      setStatus("Kijk eerst naar tekst in de editor");
+      log("Geen geldig selectie eindpunt");
+      return;
+    }
+    selectionEnd = point;
+    applySelection();
+  });
+
+  $("#dwellInput").addEventListener("input", event => {
+    dwellMs = Number(event.target.value);
+    $("#dwellLabel").textContent = dwellMs + " ms";
+  });
+
+  $("#speedInput").addEventListener("input", event => {
+    scrollSpeed = Number(event.target.value);
+    $("#speedLabel").textContent = scrollSpeed;
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (window.webgazer && eyeStarted) webgazer.end();
+  });
+
+  log("Texed Eye Test v0.3 gereed");
+})();
+</script>
+</body>
+</html>
